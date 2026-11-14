@@ -1,0 +1,652 @@
+<title>ShimLab Valving Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Simulate motorcycle fork and shock shim stacks: damping force, shim lift and stress versus shaft velocity.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: workbench — input rail on the left, dyno sheet on the right; stacks to one column on phones. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --sunk:#f5f7f9; --line:#d5dbe2; --ink:#16202a; --muted:#5b6876;
+  --oil:#b86e0a; --oil-soft:#f6e7cf; --steel:#2f5d86; --steel-soft:#dbe6f1;
+  --ok:#2e7d4f; --warn:#b7791f; --bad:#b83b3b;
+  --display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f151b; --panel:#161e26; --sunk:#1b252f; --line:#2a3743; --ink:#e3e9ef; --muted:#93a1ae;
+  --oil:#e8a33a; --oil-soft:#3a2c17; --steel:#79a9d8; --steel-soft:#1d2e40;
+  --ok:#5cbf86; --warn:#e0a84a; --bad:#e57373; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --panel:#161e26; --sunk:#1b252f; --line:#2a3743; --ink:#e3e9ef; --muted:#93a1ae;
+  --oil:#e8a33a; --oil-soft:#3a2c17; --steel:#79a9d8; --steel-soft:#1d2e40;
+  --ok:#5cbf86; --warn:#e0a84a; --bad:#e57373; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
+.wrap{max-width:1440px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding-bottom:14px;border-bottom:2px solid var(--ink);margin-bottom:16px}
+.brand h1{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:.01em;margin:0;line-height:1}
+.brand h1 span{color:var(--oil)}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.grid{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.rail{display:flex;flex-direction:column;gap:12px;min-width:0}
+.sheet{display:flex;flex-direction:column;gap:12px;min-width:0}
+section.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;min-width:0}
+.card h2{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.card h2 small{font-family:var(--body);font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);font-size:12px}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f.full{grid-column:1/-1}
+label,.lbl{font-size:12px;color:var(--muted)}
+input,select,textarea,button{font:inherit;color:inherit}
+input[type=number],input[type=text],select,textarea{width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:6px 8px;font-family:var(--mono);font-size:13px;min-width:0}
+select{font-family:var(--body)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--oil);outline-offset:1px}
+button{cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-size:13px}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--oil);border-color:var(--oil);color:#fff;font-weight:600}
+:root[data-theme="dark"] button.primary{color:#1a1206}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#1a1206}}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:6px 10px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.hint{font-size:12px;color:var(--muted);margin:8px 0 0}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+.stack th,.stack td{padding:3px 4px;text-align:left}
+.stack th{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stack td input{padding:4px 6px}
+.stack td.n{font-family:var(--mono);color:var(--muted);font-size:12px;width:22px}
+.stack td.act{white-space:nowrap;width:1%}
+.stack td.act button{padding:2px 6px;font-size:12px;line-height:1.2}
+.stack tr.inactive input{opacity:.5}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px;min-width:0}
+.kpi .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-family:var(--display);font-weight:600;font-size:26px;line-height:1.15;font-variant-numeric:tabular-nums}
+.kpi .v small{font-family:var(--body);font-size:13px;font-weight:400;color:var(--muted);margin-left:3px}
+.kpi .d{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.d.up{color:var(--bad)} .d.down{color:var(--steel)}
+.chip{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid currentColor}
+.chip.ok{color:var(--ok)} .chip.warn{color:var(--warn)} .chip.bad{color:var(--bad)}
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.chart .axis{stroke:var(--line)}
+.chart .grid line{stroke:var(--line);stroke-dasharray:2 3}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:640px){.two{grid-template-columns:minmax(0,1fr)}}
+.scrollx{overflow-x:auto}
+.dyno th,.dyno td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.dyno th{font-family:var(--body);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.dyno td:first-child,.dyno th:first-child{text-align:left}
+.dyno tr.hl td{background:var(--oil-soft)}
+.warnbox{border-left:3px solid var(--bad);background:var(--sunk);padding:8px 10px;font-size:13px;border-radius:0 4px 4px 0}
+.cursor{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cursor input[type=range]{flex:1;min-width:160px;accent-color:var(--oil)}
+.cursor output{font-family:var(--mono);font-size:13px;min-width:90px}
+.saved{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.saved .item{display:flex;gap:6px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:4px;padding:4px 4px 4px 8px;min-width:0}
+.saved .item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+details summary{cursor:pointer;color:var(--muted);font-size:13px}
+.notes{color:var(--muted);font-size:13px;max-width:72ch}
+.notes li{margin:3px 0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:4px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="brand">
+    <h1>Shim<span>Lab</span></h1>
+    <p>Shim stack valving simulator for motorcycle forks and shocks</p>
+  </div>
+  <div class="toolbar">
+    <label for="preset" class="lbl">Start from</label>
+    <select id="preset" style="width:auto"></select>
+    <div class="seg" role="group" aria-label="Units">
+      <button type="button" id="uMetric" aria-pressed="true">N · m/s</button>
+      <button type="button" id="uImp" aria-pressed="false">lbf · in/s</button>
+    </div>
+    <button type="button" id="setBase" class="primary">Set as baseline</button>
+    <button type="button" id="clrBase" hidden>Clear baseline</button>
+  </div>
+</header>
+
+<div class="grid">
+<div class="rail">
+  <section class="card">
+    <h2>Damper <small>which valve you are simulating</small></h2>
+    <div class="fields">
+      <div class="f full"><label for="areaMode">Oil displaced through this valve</label>
+        <select id="areaMode">
+          <option value="annulus">Piston minus rod (annulus)</option>
+          <option value="bore">Full piston bore</option>
+          <option value="rod">Rod only (base valve)</option>
+        </select></div>
+      <div class="f"><label for="boreD">Piston bore, mm</label><input type="number" id="boreD" step="0.5" min="1"></div>
+      <div class="f"><label for="rodD">Shaft (rod) dia, mm</label><input type="number" id="rodD" step="0.5" min="0"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Piston face <small>ports and seat</small></h2>
+    <div class="fields">
+      <div class="f"><label for="clampD">Clamp dia, mm</label><input type="number" id="clampD" step="0.5" min="1"></div>
+      <div class="f"><label for="seatOD">Seat (sealing) dia, mm</label><input type="number" id="seatOD" step="0.5" min="1"></div>
+      <div class="f"><label for="portID">Port window inner dia, mm</label><input type="number" id="portID" step="0.5" min="0"></div>
+      <div class="f"><label for="portArc">Port window share of circle, %</label><input type="number" id="portArc" step="5" min="5" max="100"></div>
+      <div class="f"><label for="portArea">Total port area, mm²</label><input type="number" id="portArea" step="5" min="1"></div>
+      <div class="f"><label for="preload">Seat preload (dish), mm</label><input type="number" id="preload" step="0.05" min="0"></div>
+    </div>
+    <p class="hint">Preload is how far the seat sits above the clamp face. A dished piston or a ring shim behind the face shim adds preload.</p>
+  </section>
+
+  <section class="card">
+    <h2>Shim stack <small>face shim first</small></h2>
+    <div class="scrollx">
+    <table class="stack">
+      <thead><tr><th></th><th>Qty</th><th>OD mm</th><th>Thk mm</th><th></th></tr></thead>
+      <tbody id="stackBody"></tbody>
+    </table>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" id="addShim">Add shim</button>
+      <span class="lbl" id="stackSummary"></span>
+    </div>
+    <svg id="stackView" class="chart" viewBox="0 0 360 120" role="img" aria-label="Cross-section of the shim stack and its deflection"></svg>
+  </section>
+
+  <section class="card">
+    <h2>Bleed, oil, material</h2>
+    <div class="fields">
+      <div class="f"><label for="bleedD">Bleed / clicker orifice dia, mm</label><input type="number" id="bleedD" step="0.1" min="0"></div>
+      <div class="f"><label for="cdBleed">Bleed discharge coeff.</label><input type="number" id="cdBleed" step="0.05" min="0.1" max="1"></div>
+      <div class="f"><label for="cdStack">Stack discharge coeff.</label><input type="number" id="cdStack" step="0.05" min="0.1" max="1"></div>
+      <div class="f"><label for="rho">Oil density, kg/m³</label><input type="number" id="rho" step="5" min="500"></div>
+      <div class="f"><label for="Egpa">Shim modulus, GPa</label><input type="number" id="Egpa" step="1" min="50"></div>
+      <div class="f"><label for="yield">Shim yield stress, MPa</label><input type="number" id="yield" step="50" min="100"></div>
+      <div class="f full"><label for="vmax" id="vmaxLbl">Top shaft speed</label><input type="number" id="vmax" step="0.5" min="0.1"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Setups <small>saved in this browser</small></h2>
+    <div class="row">
+      <input type="text" id="saveName" placeholder="e.g. Rear rebound, sand" style="flex:1;min-width:140px">
+      <button type="button" id="saveBtn">Save</button>
+    </div>
+    <div class="saved" id="savedList"></div>
+    <details style="margin-top:10px">
+      <summary>Copy or paste a setup as text</summary>
+      <textarea id="jsonBox" rows="5" style="margin-top:8px" aria-label="Setup as JSON"></textarea>
+      <div class="row" style="margin-top:6px">
+        <button type="button" id="copyJson">Copy current setup</button>
+        <button type="button" id="loadJson">Load from text</button>
+      </div>
+    </details>
+  </section>
+</div>
+
+<div class="sheet">
+  <div id="warnings"></div>
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card">
+    <h2>Damping force <small id="forceSub"></small></h2>
+    <svg id="forceChart" class="chart" viewBox="0 0 760 340" role="img" aria-label="Damping force versus shaft velocity"></svg>
+    <div class="row" style="justify-content:space-between;margin-top:6px">
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="cursor" style="margin-top:10px">
+      <label for="vcur">Inspect speed</label>
+      <input type="range" id="vcur" min="0" max="1000" value="250">
+      <output id="vcurOut" for="vcur"></output>
+    </div>
+  </section>
+
+  <div class="two">
+    <section class="card">
+      <h2>Shim lift at seat</h2>
+      <svg id="liftChart" class="chart" viewBox="0 0 380 230" role="img" aria-label="Shim lift versus velocity"></svg>
+    </section>
+    <section class="card">
+      <h2>Bleed share of flow</h2>
+      <svg id="bleedChart" class="chart" viewBox="0 0 380 230" role="img" aria-label="Share of oil through the bleed versus velocity"></svg>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Dyno sheet <small>highlighted row = inspect speed</small></h2>
+    <div class="scrollx"><table class="dyno" id="dyno"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>How the model works</h2>
+    <ul class="notes">
+      <li>The shim stack is solved as one circular plate clamped at the clamp diameter and free at its outer edge. Its stiffness at each radius is the sum of every shim that reaches that radius, so tapers and crossovers change the shape of the curve.</li>
+      <li>Pressure acts on the port windows, between the port inner diameter and the seat, scaled by the window share of the circle.</li>
+      <li>Oil flows through the bleed and, in parallel, through the ports and the curtain opened by shim lift (ports and curtain in series). Each uses the orifice equation.</li>
+      <li>Shims are assumed to bend together without separating or sliding. Large-deflection stiffening, gas pressure, cavitation, viscosity and check-valve springs are not modelled.</li>
+      <li>Use it to compare stacks against a baseline. Absolute forces depend on the discharge coefficients, which you can calibrate against a dyno run.</li>
+    </ul>
+  </section>
+</div>
+</div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+// ShimLab valving engine — independent model built from textbook physics.
+// Shim stack: axisymmetric Kirchhoff plate, clamped at the clamp radius, free at
+// the outer edge, with bending rigidity D(r) = sum of the rigidities of every shim
+// that reaches radius r (shims bend together, no separation or friction).
+// Flow: turbulent orifice equation, Q = Cd * A * sqrt(2 dP / rho).
+// All internal units are SI (m, Pa, N, m^3/s).
+(function (root) {
+  'use strict';
+
+  function stackModel(cfg) {
+    const E = cfg.E, nu = cfg.nu;
+    const b = cfg.clampD / 2000;
+    const shims = cfg.shims
+      .filter(s => s.qty > 0 && s.od > cfg.clampD && s.t > 0)
+      .map(s => ({ r: s.od / 2000, t: s.t / 1000, qty: s.qty }));
+    if (!shims.length) return { ok: false, reason: 'No shim is larger than the clamp diameter.' };
+    const a = Math.max(...shims.map(s => s.r));
+    let rs = cfg.seatOD / 2000;
+    const warnings = [];
+    if (rs > a) { warnings.push('Seat is wider than the largest shim, so the stack cannot seal.'); rs = a; }
+    if (rs <= b) return { ok: false, reason: 'Seat diameter must be larger than the clamp diameter.' };
+    let rp = Math.min(Math.max(cfg.portID / 2000, b), rs);
+    const k = cfg.portArc;
+    const Dfac = E / (12 * (1 - nu * nu));
+    const Dat = r => { let s = 0; for (const sh of shims) if (sh.r > r) s += sh.qty * sh.t ** 3; return Dfac * s; };
+    // Load per unit circumference at radius r, for unit pressure (1 Pa).
+    const P = r => r >= rs ? 0 : k * Math.PI * (rs * rs - Math.max(r, rp) ** 2);
+    const Qs = r => P(r) / (2 * Math.PI * r);
+
+    const N = 600, h = (a - b) / N;
+    const r = i => b + i * h;
+    const Dm = [], rm = [];
+    for (let i = 0; i < N; i++) { rm[i] = b + (i + 0.5) * h; Dm[i] = Dat(rm[i]); }
+    // Tridiagonal system for slope phi_1..phi_N.
+    const A = new Float64Array(N + 1), B = new Float64Array(N + 1), C = new Float64Array(N + 1), R = new Float64Array(N + 1);
+    for (let i = 1; i < N; i++) {
+      const ri = r(i), Dn = 0.5 * (Dm[i - 1] + Dm[i]);
+      A[i] = Dm[i - 1] * (rm[i - 1] / h - nu / 2) / h + Dn * nu / (2 * h);
+      B[i] = (Dm[i] * (-rm[i] / h + nu / 2) - Dm[i - 1] * (rm[i - 1] / h + nu / 2)) / h - Dn / ri;
+      C[i] = Dm[i] * (rm[i] / h + nu / 2) / h - Dn * nu / (2 * h);
+      R[i] = -ri * Qs(ri);
+    }
+    {
+      const i = N, ri = r(N), Dn = Dm[N - 1];
+      A[i] = -2 / h * Dm[N - 1] * (-rm[N - 1] / h + nu / 2) + Dn * nu / h;
+      B[i] = -2 / h * Dm[N - 1] * (rm[N - 1] / h + nu / 2) - Dn / ri - Dn * nu / h;
+      C[i] = 0; R[i] = -ri * Qs(ri);
+    }
+    // Thomas algorithm (phi_0 = 0).
+    const cp = new Float64Array(N + 1), dp = new Float64Array(N + 1), phi = new Float64Array(N + 1);
+    cp[1] = C[1] / B[1]; dp[1] = R[1] / B[1];
+    for (let i = 2; i <= N; i++) {
+      const m = B[i] - A[i] * cp[i - 1];
+      cp[i] = C[i] / m; dp[i] = (R[i] - A[i] * dp[i - 1]) / m;
+    }
+    phi[N] = dp[N];
+    for (let i = N - 1; i >= 1; i--) phi[i] = dp[i] - cp[i] * phi[i + 1];
+    // Deflection profile (per Pa), positive away from seat.
+    const w = new Float64Array(N + 1);
+    for (let i = 1; i <= N; i++) w[i] = w[i - 1] + 0.5 * (phi[i] + phi[i - 1]) * h;
+    const sgn = w[N] < 0 ? -1 : 1;
+    for (let i = 0; i <= N; i++) w[i] *= sgn;
+    const interp = rr => { const x = (rr - b) / h, i = Math.min(N - 1, Math.max(0, Math.floor(x))); return w[i] + (w[i + 1] - w[i]) * (x - i); };
+    const compliance = interp(rs); // m of seat lift per Pa
+    // Peak bending stress per Pa, in the thickest shim present at each radius.
+    let stressPerPa = 0, stressR = b;
+    for (let i = 0; i < N; i++) {
+      const rr = rm[i];
+      const dphi = (phi[i + 1] - phi[i]) / h, ph = 0.5 * (phi[i + 1] + phi[i]);
+      let tmax = 0; for (const sh of shims) if (sh.r > rr) tmax = Math.max(tmax, sh.t);
+      const s = E * tmax / (2 * (1 - nu * nu)) * Math.abs(dphi + nu * ph / rr);
+      if (s > stressPerPa) { stressPerPa = s; stressR = rr; }
+    }
+    const profile = [];
+    for (let i = 0; i <= N; i += 10) profile.push([r(i), w[i]]);
+    return { ok: true, warnings, a, b, rs, rp, compliance, stressPerPa, stressR, profile, shims };
+  }
+
+  function flowArea(mode, boreD, rodD) {
+    const bore = Math.PI / 4 * (boreD / 1000) ** 2, rod = Math.PI / 4 * (rodD / 1000) ** 2;
+    if (mode === 'bore') return bore;
+    if (mode === 'rod') return rod;
+    return bore - rod;
+  }
+
+  function simulate(cfg) {
+    const st = stackModel(cfg);
+    if (!st.ok) return st;
+    const rho = cfg.rho;
+    const Ad = flowArea(cfg.areaMode, cfg.boreD, cfg.rodD);
+    const Ab = Math.PI / 4 * (cfg.bleedD / 1000) ** 2;
+    const Ap = cfg.portArea * 1e-6;
+    const pre = cfg.preload / 1000;
+    const c = st.compliance;
+    const crack = pre / c;
+    const lift = dP => Math.max(0, c * dP - pre);
+    const flowAt = dP => {
+      const vel = Math.sqrt(2 * dP / rho);
+      const Ac = 2 * Math.PI * st.rs * lift(dP);
+      const Aeff = Ac > 0 ? Ap * Ac / Math.sqrt(Ap * Ap + Ac * Ac) : 0;
+      return { bleed: cfg.cdBleed * Ab * vel, stack: cfg.cdStack * Aeff * vel };
+    };
+    const solve = Qt => {
+      if (Qt <= 0) return 0;
+      let lo = 0, hi = 1e5;
+      while ((() => { const f = flowAt(hi); return f.bleed + f.stack; })() < Qt) { hi *= 2; if (hi > 1e11) return hi; }
+      for (let i = 0; i < 80; i++) {
+        const mid = 0.5 * (lo + hi), f = flowAt(mid);
+        if (f.bleed + f.stack < Qt) lo = mid; else hi = mid;
+      }
+      return 0.5 * (lo + hi);
+    };
+    const n = 80, pts = [];
+    for (let j = 0; j <= n; j++) {
+      const v = cfg.vmax * j / n, Qt = Ad * v, dP = solve(Qt), f = flowAt(dP);
+      const tot = f.bleed + f.stack;
+      pts.push({ v, dP, F: dP * Ad, lift: lift(dP), bleedFrac: tot > 0 ? f.bleed / tot : 1, stress: st.stressPerPa * dP });
+    }
+    const at = v => { const Qt = Ad * v, dP = solve(Qt), f = flowAt(dP), tot = f.bleed + f.stack; return { v, dP, F: dP * Ad, lift: lift(dP), bleedFrac: tot > 0 ? f.bleed / tot : 1, stress: st.stressPerPa * dP }; };
+    // Velocity where the stack starts to lift (bleed alone reaches crack pressure).
+    const vCrack = Ab > 0 ? cfg.cdBleed * Ab * Math.sqrt(2 * crack / rho) / Ad : 0;
+    return { ok: true, st, pts, at, Ad, crack, vCrack, warnings: st.warnings };
+  }
+
+  root.ShimLab = { stackModel, simulate, flowArea };
+  if (typeof module !== 'undefined') module.exports = root.ShimLab;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const PRESETS = {
+  shockReb: {name:'Shock · rebound (50/18)', areaMode:'annulus', boreD:50, rodD:18, clampD:18, seatOD:40, portID:28, portArc:50, portArea:110, preload:0, bleedD:1.2, cdBleed:0.7, cdStack:0.7, rho:870, Egpa:206, yield:1400, vmax:2,
+    shims:[[3,42,0.25],[1,38,0.25],[1,34,0.2],[1,30,0.2],[1,26,0.2],[1,22,0.2],[1,20,0.3]]},
+  shockComp: {name:'Shock · compression (50/18)', areaMode:'annulus', boreD:50, rodD:18, clampD:18, seatOD:44, portID:30, portArc:55, portArea:150, preload:0, bleedD:1.0, cdBleed:0.7, cdStack:0.7, rho:870, Egpa:206, yield:1400, vmax:2,
+    shims:[[4,44,0.2],[1,40,0.2],[1,36,0.2],[1,32,0.15],[1,28,0.15],[1,24,0.15],[1,20,0.2]]},
+  forkMid: {name:'Fork · mid-valve, two-stage (24 mm)', areaMode:'annulus', boreD:24, rodD:12, clampD:8, seatOD:20, portID:12, portArc:50, portArea:40, preload:0.1, bleedD:0, cdBleed:0.7, cdStack:0.7, rho:870, Egpa:206, yield:1400, vmax:2,
+    shims:[[1,20,0.1],[1,11,0.1],[1,20,0.15],[1,18,0.15],[1,16,0.15],[1,12,0.2]]},
+  forkReb: {name:'Fork · rebound (24 mm)', areaMode:'annulus', boreD:24, rodD:12, clampD:8, seatOD:20, portID:12, portArc:50, portArea:35, preload:0, bleedD:1.0, cdBleed:0.7, cdStack:0.7, rho:870, Egpa:206, yield:1400, vmax:2,
+    shims:[[4,20,0.15],[1,18,0.15],[1,16,0.15],[1,14,0.15],[1,12,0.2]]},
+  forkBase: {name:'Fork · base valve (rod only)', areaMode:'rod', boreD:24, rodD:12, clampD:8, seatOD:22, portID:13, portArc:55, portArea:45, preload:0, bleedD:1.2, cdBleed:0.7, cdStack:0.7, rho:870, Egpa:206, yield:1400, vmax:2,
+    shims:[[3,22,0.1],[1,20,0.1],[1,18,0.1],[1,16,0.1],[1,14,0.1],[1,12,0.15]]},
+};
+const NUM = ['boreD','rodD','clampD','seatOD','portID','portArc','portArea','preload','bleedD','cdBleed','cdStack','rho','Egpa','yield','vmax'];
+const LS_SETUPS='shimlab.setups', LS_STATE='shimlab.state';
+const lsGet = k => { try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } };
+const lsSet = (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+
+let state = null, baseline = null, imperial = false, result = null, baseResult = null;
+
+// ---------- units ----------
+const U = {
+  v: () => imperial ? {k:39.3701, u:'in/s', d:1} : {k:1, u:'m/s', d:2},
+  F: () => imperial ? {k:0.224809, u:'lbf', d:0} : {k:1, u:'N', d:0},
+  P: () => imperial ? {k:1/6894.76, u:'psi', d:0} : {k:1e-5, u:'bar', d:1},
+};
+const fmt = (x,d) => Number.isFinite(x) ? x.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}) : '–';
+
+// ---------- state <-> form ----------
+function fromPreset(key){ const p = PRESETS[key]; return {...JSON.parse(JSON.stringify(p)), preset:key, shims:p.shims.map(s=>({qty:s[0],od:s[1],t:s[2]}))}; }
+function writeForm(){
+  $('areaMode').value = state.areaMode;
+  NUM.forEach(k => { $(k).value = k==='vmax' ? +(state.vmax*U.v().k).toFixed(2) : state[k]; });
+  renderStackTable();
+}
+function readForm(){
+  state.areaMode = $('areaMode').value;
+  NUM.forEach(k => { const v = parseFloat($(k).value); if (Number.isFinite(v)) state[k] = k==='vmax' ? v/U.v().k : v; });
+}
+function cfgOf(s){
+  return { E:s.Egpa*1e9, nu:0.3, rho:s.rho, cdBleed:s.cdBleed, cdStack:s.cdStack, vmax:Math.max(0.05,s.vmax),
+    areaMode:s.areaMode, boreD:s.boreD, rodD:s.rodD, clampD:s.clampD, seatOD:s.seatOD, portID:s.portID,
+    portArc:Math.min(1,Math.max(0.05,s.portArc/100)), portArea:s.portArea, preload:s.preload, bleedD:s.bleedD,
+    shims:s.shims.map(x=>({qty:+x.qty||0, od:+x.od||0, t:+x.t||0})) };
+}
+
+// ---------- shim table ----------
+function renderStackTable(){
+  const tb = $('stackBody'); tb.innerHTML = '';
+  state.shims.forEach((s,i) => {
+    const tr = document.createElement('tr');
+    if (!(s.od > state.clampD)) tr.className = 'inactive';
+    tr.innerHTML = `<td class="n">${i+1}</td>
+      <td><input type="number" id="sq${i}" min="0" step="1" value="${s.qty}" aria-label="Shim ${i+1} quantity" style="width:52px"></td>
+      <td><input type="number" id="so${i}" min="1" step="0.5" value="${s.od}" aria-label="Shim ${i+1} outside diameter in mm" style="width:72px"></td>
+      <td><input type="number" id="st${i}" min="0.02" step="0.05" value="${s.t}" aria-label="Shim ${i+1} thickness in mm" style="width:72px"></td>
+      <td class="act"><button type="button" data-a="up" data-i="${i}" aria-label="Move shim ${i+1} toward the piston">↑</button> <button type="button" data-a="dn" data-i="${i}" aria-label="Move shim ${i+1} away from the piston">↓</button> <button type="button" data-a="rm" data-i="${i}" aria-label="Remove shim ${i+1}">×</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+$('stackBody').addEventListener('input', e => {
+  const m = e.target.id.match(/^s([qot])(\d+)$/); if (!m) return;
+  const v = parseFloat(e.target.value); if (!Number.isFinite(v)) return;
+  state.shims[+m[2]][{q:'qty',o:'od',t:'t'}[m[1]]] = v;
+  e.target.closest('tr').className = state.shims[+m[2]].od > state.clampD ? '' : 'inactive';
+  run();
+});
+$('stackBody').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const i = +b.dataset.i, sh = state.shims;
+  if (b.dataset.a==='rm') sh.splice(i,1);
+  if (b.dataset.a==='up' && i>0) [sh[i-1],sh[i]]=[sh[i],sh[i-1]];
+  if (b.dataset.a==='dn' && i<sh.length-1) [sh[i+1],sh[i]]=[sh[i],sh[i+1]];
+  renderStackTable(); run();
+});
+$('addShim').addEventListener('click', () => {
+  const last = state.shims[state.shims.length-1];
+  state.shims.push(last ? {qty:1, od:Math.max(state.clampD+2,last.od-2), t:last.t} : {qty:1, od:state.seatOD+2, t:0.15});
+  renderStackTable(); run();
+});
+
+// ---------- charts ----------
+function niceStep(range, n){ const raw = range/n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw/p; return (f<1.5?1:f<3?2:f<7?5:10)*p; }
+function chart(svg, opt){
+  const W = +svg.viewBox.baseVal.width, H = +svg.viewBox.baseVal.height;
+  const L = opt.left||58, R = 14, T = 12, B = 40;
+  const xmax = opt.xmax, ys = opt.series.flatMap(s=>s.pts.map(p=>p[1]));
+  let ymax = Math.max(opt.yminTop||0, ...ys.filter(Number.isFinite)); if (!(ymax>0)) ymax = 1;
+  const xs = niceStep(xmax, opt.xticks||6), yst = niceStep(ymax, opt.yticks||5);
+  ymax = Math.ceil(ymax/yst - 1e-9)*yst;
+  const X = x => L + (W-L-R)*x/xmax, Y = y => H-B - (H-B-T)*y/ymax;
+  let g = '<g class="grid">';
+  for (let y=0; y<=ymax+1e-9; y+=yst) g += `<line x1="${L}" x2="${W-R}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${L-6}" y="${Y(y)+4}" text-anchor="end">${fmt(y, yst<1?(yst<0.1?2:1):0)}</text>`;
+  for (let x=0; x<=xmax+1e-9; x+=xs) g += `<text x="${X(x)}" y="${H-B+16}" text-anchor="middle">${fmt(x, xs<1?(xs<0.1?2:1):0)}</text>`;
+  g += '</g>';
+  g += `<line class="axis" x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}"/><line class="axis" x1="${L}" x2="${L}" y1="${T}" y2="${H-B}"/>`;
+  g += `<text x="${(L+W-R)/2}" y="${H-6}" text-anchor="middle">${opt.xlabel}</text>`;
+  g += `<text transform="translate(12 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle">${opt.ylabel}</text>`;
+  opt.series.forEach(s => {
+    const d = s.pts.filter(p=>Number.isFinite(p[1])).map((p,i)=>`${i?'L':'M'}${X(p[0]).toFixed(1)},${Y(Math.min(p[1],ymax)).toFixed(1)}`).join('');
+    if (s.area) g += `<path d="${d}L${X(s.pts[s.pts.length-1][0])},${Y(0)}L${X(0)},${Y(0)}Z" fill="${s.color}" fill-opacity=".10" stroke="none"/>`;
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w||2.25}" ${s.dash?'stroke-dasharray="6 5"':''} stroke-linejoin="round"/>`;
+  });
+  if (opt.cursor != null) {
+    const cx = X(opt.cursor);
+    g += `<line x1="${cx}" x2="${cx}" y1="${T}" y2="${H-B}" stroke="var(--ink)" stroke-opacity=".35" stroke-width="1"/>`;
+    opt.series.forEach(s => { if (s.dot!=null && Number.isFinite(s.dot)) g += `<circle cx="${cx}" cy="${Y(Math.min(s.dot,ymax))}" r="4" fill="var(--panel)" stroke="${s.color}" stroke-width="2"/>`; });
+  }
+  svg.innerHTML = g;
+}
+
+function drawStack(){
+  const svg = $('stackView'), W = 360, H = 120;
+  if (!result || !result.ok) { svg.innerHTML = ''; return; }
+  const st = result.st, cur = curPoint();
+  const rMax = Math.max(st.a, state.seatOD/2000, state.boreD/2000*0.6) * 1.06;
+  const sx = r => 10 + (W-20) * r / rMax;          // radial position, axis at left
+  const tot = state.shims.reduce((s,x)=> s + (x.od>0? x.qty*x.t : 0), 0);
+  const pxPerMm = Math.min(60, 54 / Math.max(tot, 0.3));
+  const base = 80;                                   // piston face line
+  const liftScale = cur ? Math.min(30 / Math.max(cur.lift*1000 + 1e-6, 0.05), 40) : 0; // px per mm of lift (exaggerated)
+  const prof = st.profile, defl = r => { if (r <= st.b) return 0; for (let i=1;i<prof.length;i++) if (prof[i][0]>=r) { const [r0,w0]=prof[i-1],[r1,w1]=prof[i]; return w0+(w1-w0)*(r-r0)/(r1-r0); } return prof[prof.length-1][1]; };
+  const c = result.st.compliance, dP = cur ? cur.dP : 0, pre = state.preload/1000;
+  const wAt = r => cur && cur.lift > 0 ? (defl(r)*dP - pre * defl(r)/c) * 1000 : 0; // lifted shape, mm
+  let g = '';
+  // piston body
+  g += `<rect x="${sx(0)}" y="${base}" width="${sx(state.boreD/2000)-sx(0)}" height="${H-base-6}" fill="var(--sunk)" stroke="var(--line)"/>`;
+  // port window
+  g += `<rect x="${sx(st.rp)}" y="${base}" width="${sx(st.rs)-sx(st.rp)}" height="${H-base-6}" fill="var(--oil-soft)" stroke="none"/>`;
+  g += `<rect x="${sx(st.rs)-2}" y="${base-2}" width="4" height="4" fill="var(--ink)"/>`;
+  // shims, bottom up
+  let y = base - 2;
+  state.shims.forEach(s => {
+    if (!(s.qty>0 && s.od>0 && s.t>0)) return;
+    for (let q=0; q<s.qty; q++) {
+      const h = Math.max(1.2, s.t*pxPerMm), r1 = s.od/2000;
+      const active = s.od > state.clampD;
+      const pts = [], N = 24;
+      for (let k=0;k<=N;k++){ const r = r1*k/N; const lift = active ? wAt(Math.max(r,st.b))*liftScale : 0; pts.push([sx(r), y - lift]); }
+      const top = pts.map(p=>`${p[0].toFixed(1)},${(p[1]-h).toFixed(1)}`).join(' ');
+      const bot = pts.slice().reverse().map(p=>`${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+      g += `<polygon points="${top} ${bot}" fill="${active?'var(--steel)':'var(--muted)'}" fill-opacity="${active?0.85:0.4}" stroke="var(--panel)" stroke-width=".6"/>`;
+      y -= h;
+    }
+  });
+  // clamp
+  g += `<rect x="${sx(0)}" y="${Math.max(4,y-10)}" width="${sx(state.clampD/2000)-sx(0)}" height="${base-2-Math.max(4,y-10)+0}" fill="none" stroke="var(--ink)" stroke-dasharray="3 3"/>`;
+  g += `<text x="${W-8}" y="14" text-anchor="end">${cur && cur.lift>0 ? 'lift ×'+fmt(liftScale/pxPerMm,0)+' at inspect speed' : 'closed at inspect speed'}</text>`;
+  svg.innerHTML = g;
+}
+
+// ---------- outputs ----------
+function curV(){ return (+$('vcur').value/1000) * Math.max(0.05,state.vmax); }
+function curPoint(){ return result && result.ok ? result.at(curV()) : null; }
+
+function renderOutputs(){
+  const v = U.v(), F = U.F(), P = U.P();
+  const w = $('warnings'); w.innerHTML = '';
+  if (!result.ok) { w.innerHTML = `<div class="warnbox">${result.reason}</div>`; $('kpis').innerHTML=''; ['forceChart','liftChart','bleedChart','stackView'].forEach(i=>$(i).innerHTML=''); $('dyno').innerHTML=''; return; }
+  const msgs = [...result.warnings];
+  const peak = result.pts[result.pts.length-1];
+  if (peak.stress/1e6 > state.yield) msgs.push(`Shim stress reaches ${fmt(peak.stress/1e6,0)} MPa at top speed, above the ${fmt(state.yield,0)} MPa yield you set. The stack would take a set.`);
+  if (state.bleedD===0 && state.preload>0) msgs.push('No bleed and a preloaded stack: the damper is hydraulically locked until the crack pressure is reached.');
+  w.innerHTML = msgs.map(m=>`<div class="warnbox">${m}</div>`).join('');
+
+  const refs = imperial ? [5,20,40] : [0.1,0.5,1.0];
+  const kp = refs.map(rv => {
+    const vs = rv / v.k, a = result.at(vs), bb = baseResult && baseResult.ok ? baseResult.at(vs) : null;
+    let d = '';
+    if (bb && bb.F>0) { const pct = (a.F-bb.F)/bb.F*100; d = `<div class="d ${pct>0.5?'up':pct<-0.5?'down':''}">${pct>=0?'+':''}${fmt(pct,1)}% vs baseline</div>`; }
+    else d = `<div class="d">${fmt(a.dP*P.k,P.d)} ${P.u} across piston</div>`;
+    return `<div class="kpi"><div class="k">Force at ${fmt(rv, v.d)} ${v.u}</div><div class="v">${fmt(a.F*F.k,F.d)}<small>${F.u}</small></div>${d}</div>`;
+  });
+  const sMax = peak.stress/1e6, ratio = sMax/state.yield;
+  const chip = ratio>1 ? '<span class="chip bad">Over yield</span>' : ratio>0.8 ? '<span class="chip warn">Near yield</span>' : '<span class="chip ok">Safe</span>';
+  kp.push(`<div class="kpi"><div class="k">Crack pressure</div><div class="v">${fmt(result.crack*P.k,P.d)}<small>${P.u}</small></div><div class="d">${result.crack>0 ? 'stack opens at '+fmt(result.vCrack*v.k, v.d+1)+' '+v.u : 'no preload, opens at once'}</div></div>`);
+  kp.push(`<div class="kpi"><div class="k">Peak shim stress</div><div class="v">${fmt(sMax,0)}<small>MPa</small></div><div class="d">${chip}</div></div>`);
+  $('kpis').innerHTML = kp.join('');
+
+  const cv = curV(), cur = result.at(cv), bcur = baseResult && baseResult.ok ? baseResult.at(cv) : null;
+  $('vcurOut').textContent = `${fmt(cv*v.k, v.d)} ${v.u}`;
+  $('forceSub').textContent = `${fmt(cur.F*F.k,F.d)} ${F.u} at ${fmt(cv*v.k,v.d)} ${v.u}` + (bcur ? ` · baseline ${fmt(bcur.F*F.k,F.d)}` : '');
+  const xmax = state.vmax * v.k;
+  const ser = (r, fn) => r.pts.map(p=>[p.v*v.k, fn(p)]);
+  const fS = [{pts:ser(result,p=>p.F*F.k), color:'var(--oil)', area:true, dot:cur.F*F.k}];
+  const lS = [{pts:ser(result,p=>p.lift*1000), color:'var(--oil)', dot:cur.lift*1000}];
+  const bS = [{pts:ser(result,p=>p.bleedFrac*100), color:'var(--oil)', dot:cur.bleedFrac*100}];
+  if (baseResult && baseResult.ok) {
+    const bx = baseResult.pts.filter(p=>p.v*v.k<=xmax+1e-9);
+    const sb = fn => bx.map(p=>[p.v*v.k, fn(p)]);
+    fS.unshift({pts:sb(p=>p.F*F.k), color:'var(--steel)', dash:true, dot:bcur.F*F.k});
+    lS.unshift({pts:sb(p=>p.lift*1000), color:'var(--steel)', dash:true, dot:bcur.lift*1000});
+    bS.unshift({pts:sb(p=>p.bleedFrac*100), color:'var(--steel)', dash:true, dot:bcur.bleedFrac*100});
+  }
+  chart($('forceChart'), {series:fS, xmax, xlabel:`Shaft velocity, ${v.u}`, ylabel:`Damping force, ${F.u}`, cursor:cv*v.k, left:62});
+  chart($('liftChart'), {series:lS, xmax, xlabel:`Shaft velocity, ${v.u}`, ylabel:'Lift, mm', cursor:cv*v.k, yticks:4, xticks:4, left:52});
+  chart($('bleedChart'), {series:bS, xmax, xlabel:`Shaft velocity, ${v.u}`, ylabel:'Bleed share, %', cursor:cv*v.k, yminTop:100, yticks:4, xticks:4, left:52});
+  $('legend').innerHTML = `<span><i style="border-color:var(--oil)"></i>Current setup</span>` + (baseResult && baseResult.ok ? `<span><i style="border-color:var(--steel);border-top-style:dashed"></i>Baseline: ${baseline.label}</span>` : '<span>Set a baseline to compare changes</span>');
+
+  // dyno table
+  const rows = imperial ? [1,2,5,10,15,20,30,40,60,80] : [0.025,0.05,0.1,0.2,0.3,0.5,0.75,1,1.5,2,3,4];
+  const vs = rows.map(r=>r/v.k).filter(x=>x<=state.vmax+1e-9);
+  if (!vs.some(x=>Math.abs(x-cv)<1e-6)) vs.push(cv);
+  vs.sort((a,b)=>a-b);
+  let t = `<thead><tr><th>Velocity, ${v.u}</th><th>Force, ${F.u}</th>${baseResult&&baseResult.ok?'<th>Δ vs base</th>':''}<th>ΔP, ${P.u}</th><th>Lift, mm</th><th>Bleed %</th><th>Stress, MPa</th></tr></thead><tbody>`;
+  vs.forEach(x => {
+    const a = result.at(x), b = baseResult&&baseResult.ok ? baseResult.at(x) : null;
+    t += `<tr class="${Math.abs(x-cv)<1e-6?'hl':''}"><td>${fmt(x*v.k, v.d+(x*v.k<0.1?1:0))}</td><td>${fmt(a.F*F.k,F.d)}</td>${b?`<td>${b.F>0?((a.F>=b.F?'+':'')+fmt((a.F-b.F)/b.F*100,1)+'%'):'–'}</td>`:''}<td>${fmt(a.dP*P.k,P.d)}</td><td>${fmt(a.lift*1000,3)}</td><td>${fmt(a.bleedFrac*100,0)}</td><td>${fmt(a.stress/1e6,0)}</td></tr>`;
+  });
+  $('dyno').innerHTML = t + '</tbody>';
+  drawStack();
+}
+
+function summary(){
+  const act = state.shims.filter(s=>s.od>state.clampD && s.qty>0);
+  const n = act.reduce((s,x)=>s+x.qty,0), h = state.shims.reduce((s,x)=>s+(x.qty>0?x.qty*x.t:0),0);
+  $('stackSummary').textContent = `${n} working shims · stack height ${fmt(h,2)} mm`;
+}
+
+let raf = 0;
+function run(){
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => {
+    result = ShimLab.simulate(cfgOf(state));
+    summary(); renderOutputs();
+    lsSet(LS_STATE, {state, baseline, imperial});
+  });
+}
+
+// ---------- events ----------
+NUM.concat(['areaMode']).forEach(k => $(k).addEventListener('input', () => { readForm(); if (k==='clampD') renderStackTable(); if (k==='vmax' && baseline) baseResult = ShimLab.simulate({...cfgOf(baseline.state), vmax:Math.max(0.05,state.vmax)}); run(); }));
+$('vcur').addEventListener('input', () => { if (result && result.ok) renderOutputs(); });
+$('preset').addEventListener('change', e => { state = fromPreset(e.target.value); writeForm(); refreshBase(); run(); toast('Loaded '+PRESETS[e.target.value].name); });
+function setUnits(imp){ readForm(); imperial = imp; $('uMetric').setAttribute('aria-pressed', String(!imp)); $('uImp').setAttribute('aria-pressed', String(imp)); $('vmaxLbl').textContent = `Top shaft speed, ${U.v().u}`; writeForm(); run(); }
+$('uMetric').addEventListener('click', () => setUnits(false));
+$('uImp').addEventListener('click', () => setUnits(true));
+function refreshBase(){ baseResult = baseline ? ShimLab.simulate({...cfgOf(baseline.state), vmax:Math.max(0.05,state.vmax)}) : null; $('clrBase').hidden = !baseline; }
+$('setBase').addEventListener('click', () => { const nm = ($('saveName').value.trim()) || 'setup at '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); baseline = {label:nm, state:JSON.parse(JSON.stringify(state))}; refreshBase(); run(); toast('Baseline set. Change the stack to compare.'); });
+$('clrBase').addEventListener('click', () => { baseline = null; refreshBase(); run(); toast('Baseline cleared'); });
+
+// saved setups
+function renderSaved(){
+  const list = lsGet(LS_SETUPS) || [];
+  $('savedList').innerHTML = list.length ? list.map((s,i)=>`<div class="item"><span title="${esc(s.name)}">${esc(s.name)}</span><span class="row" style="gap:4px;flex-wrap:nowrap"><button type="button" data-l="${i}">Load</button><button type="button" data-b="${i}">Baseline</button><button type="button" data-d="${i}" aria-label="Delete ${esc(s.name)}">×</button></span></div>`).join('') : '<p class="hint" style="margin:0">No saved setups yet. Name the current one and press Save.</p>';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('saveBtn').addEventListener('click', () => {
+  const name = $('saveName').value.trim() || 'Setup '+new Date().toLocaleString();
+  const list = lsGet(LS_SETUPS) || []; list.unshift({name, state:JSON.parse(JSON.stringify(state))}); lsSet(LS_SETUPS, list.slice(0,50));
+  renderSaved(); toast('Saved “'+name+'”');
+});
+$('savedList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; const list = lsGet(LS_SETUPS) || [];
+  if (b.dataset.l) { state = JSON.parse(JSON.stringify(list[+b.dataset.l].state)); writeForm(); run(); toast('Loaded “'+list[+b.dataset.l].name+'”'); }
+  if (b.dataset.b) { baseline = {label:list[+b.dataset.b].name, state:JSON.parse(JSON.stringify(list[+b.dataset.b].state))}; refreshBase(); run(); toast('Baseline set to “'+baseline.label+'”'); }
+  if (b.dataset.d) { const [gone] = list.splice(+b.dataset.d,1); lsSet(LS_SETUPS, list); renderSaved(); toast('Deleted “'+gone.name+'”'); }
+});
+$('copyJson').addEventListener('click', () => {
+  const txt = JSON.stringify(state, null, 1); $('jsonBox').value = txt;
+  const sel = () => { $('jsonBox').focus(); $('jsonBox').select(); toast('Setup is selected. Copy it with your keyboard.'); };
+  try { navigator.clipboard.writeText(txt).then(()=>toast('Setup copied'), sel); } catch(e){ sel(); }
+});
+$('loadJson').addEventListener('click', () => {
+  try { const s = JSON.parse($('jsonBox').value); if (!Array.isArray(s.shims)) throw 0; state = {...fromPreset('shockReb'), ...s}; writeForm(); run(); toast('Setup loaded'); }
+  catch(e){ toast('That text is not a ShimLab setup. Paste the text from “Copy current setup”.'); }
+});
+let tt = 0; function toast(m){ const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(()=>t.classList.remove('show'), 2400); }
+
+// ---------- boot ----------
+$('preset').innerHTML = Object.entries(PRESETS).map(([k,p])=>`<option value="${k}">${p.name}</option>`).join('');
+const saved = lsGet(LS_STATE);
+if (saved && saved.state && Array.isArray(saved.state.shims)) { state = saved.state; baseline = saved.baseline || null; imperial = !!saved.imperial; }
+else { state = fromPreset('shockReb'); baseline = {label:'Stock rebound', state:JSON.parse(JSON.stringify(state))}; state.shims[1].t = 0.2; state.shims[2].od = 36; }
+if (state.preset && PRESETS[state.preset]) $('preset').value = state.preset;
+$('uMetric').setAttribute('aria-pressed', String(!imperial)); $('uImp').setAttribute('aria-pressed', String(imperial));
+$('vmaxLbl').textContent = `Top shaft speed, ${U.v().u}`;
+writeForm(); refreshBase(); renderSaved(); run();
+})();
+</script>
